@@ -25,6 +25,7 @@
 
 #include <windows.h>
 #include <winsock2.h>
+#include <ntdef.h>
 #include <malloc.h>
 
 #include "options.h"
@@ -72,11 +73,32 @@ OpenManagement(connection_t *c)
         WSACleanup ();
         return FALSE;
     }
-    if (WSAAsyncSelect(c->manage.sk, c->hwndStatus, WM_MANAGEMENT,
-        FD_CONNECT|FD_READ|FD_WRITE|FD_CLOSE) != 0)
+    c->manage.overlapped_connect.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+    if (c->manage.overlapped_connect.hEvent == NULL)
+    {
+        closesocket(c->manage.sk);
+        WSACleanup();
         return FALSE;
+    }
+    c->manage.overlapped_read.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+    if (c->manage.overlapped_connect.hEvent == NULL)
+    {
+        closesocket(c->manage.sk);
+        Close(c->manage.overlapped_connect.hEvent);
+        WSACleanup();
+        return FALSE;
+    }
+    c->manage.overlapped_write.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+    if (c->manage.overlapped_connect.hEvent == NULL)
+    {
+        closesocket(c->manage.sk);
+        Close(c->manage.overlapped_connect.hEvent);
+        Close(c->manage.overlapped_read.hEvent);
+        WSACleanup();
+        return FALSE;
+    }
 
-    connect(c->manage.sk, (SOCKADDR *)&c->manage.skaddr, sizeof(c->manage.skaddr));
+    ConnectEx(c->manage.sk, (SOCKADDR *)&c->manage.skaddr, sizeof(c->manage.skaddr), NULL, 0, NULL, &c->manage.overlapped_connect);
     c->manage.timeout = time(NULL) + max_connect_time;
 
     return TRUE;
@@ -189,7 +211,7 @@ UnqueueCommand(connection_t *c)
  * Handle management socket events asynchronously
  */
 void
-OnManagement(SOCKET sk, LPARAM lParam)
+OnManagement(SOCKET sk, on_management_event event)
 {
     int res;
     char *data;
@@ -198,14 +220,14 @@ OnManagement(SOCKET sk, LPARAM lParam)
     connection_t *c = GetConnByManagement(sk);
     if (c == NULL)
         return;
-
-    switch (WSAGETSELECTEVENT(lParam))
+    DWORD num_transfer = 0;
+    switch (event)
     {
-    case FD_CONNECT:
-        if (WSAGETSELECTERROR(lParam))
+    case connect:
+        if (NT_ERROR(c->manage.overlapped_connect.Internal) || c->manage.overlapped_connect.Internal == STATUS_PENDING)
         {
             if (time(NULL) < c->manage.timeout)
-                connect(c->manage.sk, (SOCKADDR *)&c->manage.skaddr, sizeof(c->manage.skaddr));
+                ConnectEx(c->manage.sk, (SOCKADDR *)&c->manage.skaddr, sizeof(c->manage.skaddr), NULL, 0, NULL, &c->manage.overlapped_connect);
             else
             {
                 /* Connection to MI timed out. */
@@ -219,7 +241,7 @@ OnManagement(SOCKET sk, LPARAM lParam)
             c->manage.connected = TRUE;
         break;
 
-    case FD_READ:
+    case read:
         if (ioctlsocket(c->manage.sk, FIONREAD, &data_size) != 0
         ||  data_size == 0)
             return;
@@ -368,7 +390,7 @@ OnManagement(SOCKET sk, LPARAM lParam)
         free(data);
         break;
 
-    case FD_WRITE:
+    case write:
         SendCommand(c);
         break;
 

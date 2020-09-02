@@ -1812,14 +1812,29 @@ ThreadOpenVPNStatus(void *p)
         DWORD res;
         if (!PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
         {
-            if ((res = MsgWaitForMultipleObjectsEx (1, &wait_event, INFINITE, QS_ALLINPUT,
-                                         MWMO_ALERTABLE)) == WAIT_OBJECT_0)
+            //HANDLE event_array[] = ;
+            if ((res = MsgWaitForMultipleObjectsEx (4,
+                (HANDLE[]) { wait_event, c->manage.overlapped_connect.hEvent, c->manage.overlapped_read.hEvent, c->manage.overlapped_write.hEvent }, INFINITE, QS_ALLINPUT,
+                     MWMO_ALERTABLE)) == WAIT_OBJECT_0)
             {
                 if (wait_event == c->hProcess)
                     OnProcess (c, NULL);
                 else if (wait_event == c->iserv.hEvent)
                     OnService (c, NULL);
             }
+            else if (res == WAIT_OBJECT_0 + 1)
+            {
+                OnManagement(c->manage.sk, connect);
+            }
+            else if (res == WAIT_OBJECT_0 + 2)
+            {
+                OnManagement(c->manage.sk, read);
+            }
+            else if (res == WAIT_OBJECT_0 + 3)
+            {
+                OnManagement(c->manage.sk, write);
+            }
+
             continue;
         }
 

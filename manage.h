@@ -65,7 +65,9 @@ void InitManagement(const mgmt_rtmsg_handler *handler);
 BOOL OpenManagement(connection_t *);
 BOOL ManagementCommand(connection_t *, char *, mgmt_msg_func, mgmt_cmd_type);
 
-void OnManagement(SOCKET, LPARAM);
+typedef enum { connect, read, write } on_management_event;
+
+void OnManagement(SOCKET, on_management_event);
 void CloseManagement(connection_t *);
 
 #endif

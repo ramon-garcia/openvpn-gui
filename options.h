@@ -136,6 +136,9 @@ struct connection {
     struct {
         SOCKET sk;
         SOCKADDR_IN skaddr;
+        OVERLAPPED overlapped_connect;
+        OVERLAPPED overlapped_read;
+        OVERLAPPED overlapped_write;
         time_t timeout;
         char password[16];
         char *saved_data;
@@ -146,6 +149,8 @@ struct connection {
 
     HANDLE hProcess;                /* Handle of openvpn process if directly started */
     service_io_t iserv;
+
+    
 
     HANDLE exit_event;
     DWORD threadId;
